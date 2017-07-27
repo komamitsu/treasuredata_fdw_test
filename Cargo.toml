@@ -1,0 +1,12 @@
+[package]
+name = "treasuredata_fdw_test"
+version = "0.1.0"
+authors = ["Mitsunori Komatsu <komamitsu@gmail.com>"]
+
+[dependencies]
+hyper = '0.10'
+libc = '0.1'
+retry = '0.4'
+time = '0.1'
+uuid = { version = "0.4", features = ["v4"] }
+td-client = '0.5'
