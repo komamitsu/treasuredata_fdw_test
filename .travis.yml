@@ -1,4 +1,4 @@
-dist: trusty
+dist: xenial
 
 addons:
   postgresql: "10"
@@ -12,11 +12,11 @@ addons:
       - postgresql-contrib-10
       - postgresql-server-dev-10
 
-env:
-  global:
-    - PGUSER=travis
-    - PGHOST=/var/run/postgresql
-    - PGPORT=5433
+# env:
+#   global:
+#     - PGUSER=travis
+#     - PGHOST=/var/run/postgresql
+#     - PGPORT=5433
 
 language: c
 
