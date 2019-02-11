@@ -35,3 +35,6 @@ install:
 
 script:
   - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress presto && travis_wait 40 make installcheck; fi'
+
+after_failure:
+  - grep -i -v apikey regression.*
