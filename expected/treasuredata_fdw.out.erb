@@ -1,0 +1,293 @@
+\c postgres <%= @pg_role %>
+CREATE EXTENSION treasuredata_fdw;
+CREATE SERVER treasuredata_server FOREIGN DATA WRAPPER treasuredata_fdw;
+CREATE FOREIGN TABLE td_www_access (
+    time integer,
+    code integer,
+    agent varchar,
+    size integer,
+    method varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'sample_datasets',
+    query_engine '<%= @query_engine %>',
+    table 'www_access'
+);
+SELECT time, code, size, method FROM td_www_access ORDER BY TIME LIMIT 5;
+    time    | code | size | method 
+------------+------+------+--------
+ 1412320845 |  200 |   62 | GET
+ 1412320861 |  200 |  115 | GET
+ 1412320878 |  200 |   75 | GET
+ 1412320895 |  200 |   50 | GET
+ 1412320911 |  200 |   93 | GET
+(5 rows)
+
+SELECT COUNT(1) FROM td_www_access;
+ count 
+-------
+  5000
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE time < 1412320911;
+ count 
+-------
+     4
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE SUBSTR(method, 1, 3) = 'POS';
+ count 
+-------
+   376
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE method LIKE '%ET' AND code = 200;
+ count 
+-------
+  4605
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE method NOT LIKE '%ET' AND code NOT IN (404, 409);
+ count 
+-------
+   376
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE code = ANY('{200,400}') AND method = SOME('{"","DELETE,GET","POST"}');
+ count 
+-------
+   376
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE code > ANY('{200, 300}');
+ count 
+-------
+    19
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE code = 200 AND method IN ('"', 'GET', 'POST');
+ count 
+-------
+  4981
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE time in (SELECT MIN(time) FROM td_www_access);
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE SUBSTRING(method, 1, 2) || SUBSTR(method, 3, 2) = 'POST';
+ count 
+-------
+   376
+(1 row)
+
+SELECT COUNT(1) FROM td_www_access WHERE agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.6; rv:9.0.1) Gecko/20100101 Firefox/9.0.1' OR agent LIKE 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:10.0.1)%' OR agent IN ('Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)', 'Mozilla/5.0 (iPad; CPU OS 5_0_1 like Mac OS X) AppleWebKit/534.46 (KHTML, like Gecko) Version/5.1 Mobile/9A405 Safari/7534.48.3');
+ count 
+-------
+  1161
+(1 row)
+
+-- For https://github.com/komamitsu/treasuredata_fdw/issues/23
+SELECT COUNT(1) FROM (SELECT * FROM td_www_access LIMIT 1) x WHERE size > 0;
+ count 
+-------
+     1
+(1 row)
+
+BEGIN;
+DECLARE cur CURSOR FOR SELECT time FROM td_www_access WHERE time < 1412320911 ORDER BY time;
+FETCH cur;
+    time    
+------------
+ 1412320845
+(1 row)
+
+FETCH cur;
+    time    
+------------
+ 1412320861
+(1 row)
+
+COMMIT;
+CREATE FOREIGN TABLE td_quote_test (
+    val varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'quote_test'
+);
+SELECT COUNT(1) FROM td_quote_test WHERE val IN ('xxx', '''abc''');
+ count 
+-------
+     1
+(1 row)
+
+CREATE FOREIGN TABLE td_summary_in_www_access (
+    code integer,
+    method varchar,
+    count integer
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'sample_datasets',
+    query_engine '<%= @query_engine %>',
+    query_download_dir '/tmp/tdfdw',
+    query 'SELECT code, method, COUNT(1) as count FROM www_access GROUP BY code, method'
+);
+SELECT * FROM td_summary_in_www_access WHERE method = 'GET' AND (code = 200 OR code = 404) ORDER BY code, method;
+ code | method | count 
+------+--------+-------
+  200 | GET    |  4605
+  404 | GET    |    17
+(2 rows)
+
+SELECT method, code FROM td_summary_in_www_access ORDER BY code, method;
+ method | code 
+--------+------
+ GET    |  200
+ POST   |  200
+ GET    |  404
+ GET    |  500
+(4 rows)
+
+CREATE FOREIGN TABLE td_www_access_dst (
+    time integer,
+    code integer,
+    agent varchar,
+    size integer,
+    method varchar
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'www_access_dst',
+    import_file_size '50000',
+    atomic_import 'true'
+);
+INSERT INTO td_www_access_dst SELECT * FROM td_www_access;
+CREATE FOREIGN TABLE td_array_test (
+    str_array text[],
+    int_array integer[],
+    long_array bigint[],
+    float_array float[],
+    double_array float[],
+    str_array_array text[][],
+    int_array_array integer[][],
+    long_array_array bigint[][],
+    float_array_array float[][],
+    double_array_array float[][]
+)
+SERVER treasuredata_server OPTIONS (
+    apikey '<%= @apikey %>',
+    database 'treasuredata_fdw',
+    query_engine '<%= @query_engine %>',
+    table 'array_test'
+);
+SELECT * FROM td_array_test;
+    str_array    | int_array |             long_array             |  float_array  |    double_array     |     str_array_array      | int_array_array |                 long_array_array                  |   float_array_array   |      double_array_array       
+-----------------+-----------+------------------------------------+---------------+---------------------+--------------------------+-----------------+---------------------------------------------------+-----------------------+-------------------------------
+ {one,two,three} | {1,2,3}   | {1000000000,2000000000,3000000000} | {1.1,2.2,3.3} | {1.111,2.222,3.333} | {{one,two},{three,four}} | {{1,2},{3,4}}   | {{1000000000,2000000000},{3000000000,4000000000}} | {{1.1,2.2},{3.3,4.4}} | {{1.111,2.222},{3.333,4.444}}
+(1 row)
+
+SELECT COUNT(1) FROM td_array_test WHERE 'two' = any(str_array);
+ count 
+-------
+     1
+(1 row)
+
+-- ===================================================================
+-- import foreign schema
+-- ===================================================================
+CREATE SCHEMA local_schema;
+IMPORT FOREIGN SCHEMA sample_datasets
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey '<%= @apikey %>',
+    query_engine '<%= @query_engine %>'
+);
+SELECT table_schema, table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'local_schema'
+ORDER BY table_name, ordinal_position;
+ table_schema | table_name | column_name |    data_type     
+--------------+------------+-------------+------------------
+ local_schema | nasdaq     | symbol      | text
+ local_schema | nasdaq     | open        | double precision
+ local_schema | nasdaq     | volume      | bigint
+ local_schema | nasdaq     | high        | double precision
+ local_schema | nasdaq     | low         | double precision
+ local_schema | nasdaq     | close       | double precision
+ local_schema | www_access | user        | integer
+ local_schema | www_access | host        | text
+ local_schema | www_access | path        | text
+ local_schema | www_access | referer     | text
+ local_schema | www_access | code        | bigint
+ local_schema | www_access | agent       | text
+ local_schema | www_access | size        | bigint
+ local_schema | www_access | method      | text
+(14 rows)
+
+SELECT code, size, method FROM local_schema.www_access ORDER BY size, code LIMIT 5;
+ code | size | method 
+------+------+--------
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+  200 |   40 | GET
+(5 rows)
+
+IMPORT FOREIGN SCHEMA treasuredata_fdw LIMIT TO (array_test)
+FROM SERVER treasuredata_server
+INTO local_schema OPTIONS (
+    apikey '<%= @apikey %>',
+    query_engine '<%= @query_engine %>'
+);
+SELECT table_schema, table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'local_schema' AND table_name = 'array_test'
+ORDER BY table_name, ordinal_position;
+ table_schema | table_name |    column_name     | data_type 
+--------------+------------+--------------------+-----------
+ local_schema | array_test | str_array          | ARRAY
+ local_schema | array_test | int_array          | ARRAY
+ local_schema | array_test | long_array         | ARRAY
+ local_schema | array_test | float_array        | ARRAY
+ local_schema | array_test | double_array       | ARRAY
+ local_schema | array_test | str_array_array    | ARRAY
+ local_schema | array_test | int_array_array    | ARRAY
+ local_schema | array_test | long_array_array   | ARRAY
+ local_schema | array_test | float_array_array  | ARRAY
+ local_schema | array_test | double_array_array | ARRAY
+(10 rows)
+
+SELECT * FROM local_schema.array_test;
+    str_array    | int_array |             long_array             |  float_array  |    double_array     |     str_array_array      | int_array_array |                 long_array_array                  |   float_array_array   |      double_array_array       
+-----------------+-----------+------------------------------------+---------------+---------------------+--------------------------+-----------------+---------------------------------------------------+-----------------------+-------------------------------
+ {one,two,three} | {1,2,3}   | {1000000000,2000000000,3000000000} | {1.1,2.2,3.3} | {1.111,2.222,3.333} | {{one,two},{three,four}} | {{1,2},{3,4}}   | {{1000000000,2000000000},{3000000000,4000000000}} | {{1.1,2.2},{3.3,4.4}} | {{1.111,2.222},{3.333,4.444}}
+(1 row)
+
+SELECT COUNT(1) FROM local_schema.array_test WHERE 'two' = any(str_array);
+ count 
+-------
+     1
+(1 row)
+
+-- ===================================================================
+-- clean up
+-- ===================================================================
+DROP FOREIGN TABLE td_www_access_dst;
+DROP FOREIGN TABLE td_summary_in_www_access;
+DROP FOREIGN TABLE td_www_access;
+DROP FOREIGN TABLE td_quote_test;
+DROP FOREIGN TABLE td_array_test;
+SET client_min_messages = 'error'; -- pg9.6 print NOTICE log in the next command but pg9.5 does not
+DROP SCHEMA local_schema CASCADE;
+DROP SERVER treasuredata_server;
+DROP EXTENSION treasuredata_fdw CASCADE;

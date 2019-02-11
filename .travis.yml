@@ -1,0 +1,37 @@
+dist: trusty
+
+addons:
+  postgresql: "10"
+  apt:
+    packages:
+      - curl
+      - wget
+      - ca-certificates
+      - build-essential
+      - postgresql-10
+      - postgresql-contrib-10
+      - postgresql-server-dev-10
+
+env:
+  global:
+    - PGHOST=/var/run/postgresql
+    - PGPORT=5433
+
+language: c
+
+cache: cargo
+
+services:
+  - postgresql
+
+before_install:
+  - curl -o rustup_install.sh https://sh.rustup.rs -sSf && sh rustup_install.sh -y
+  - export PATH=$HOME/.cargo/bin:$PATH
+  - sudo lsof -i -U
+
+install:
+  - make
+  - sudo env PATH=$PATH make install
+
+script:
+  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./setup_regress presto && travis_wait 40 make installcheck; fi'
